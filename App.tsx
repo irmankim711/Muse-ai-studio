@@ -17,21 +17,85 @@ const App: React.FC = () => {
 
   const [initLoading, setInitLoading] = useState(false);
 
-  // Handle starting the story
+  // --- Serialization Logic for Sharing ---
+  
+  const serializeState = (currentState: StoryState) => {
+    const minifiedData = {
+      g: currentState.genre,
+      c: currentState.mainCharacter,
+      s: currentState.segments.map(s => ({
+        id: s.id,
+        text: s.text,
+        imagePrompt: s.imagePrompt,
+        choices: s.choices
+        // imageUrl is excluded to keep URL size manageable
+      }))
+    };
+    const jsonString = JSON.stringify(minifiedData);
+    // Handle Unicode characters (emojis, etc.) for Base64
+    return btoa(encodeURIComponent(jsonString).replace(/%([0-9A-F]{2})/g,
+        (match, p1) => String.fromCharCode(parseInt(p1, 16))
+    ));
+  };
+
+  const deserializeState = (hash: string): Partial<StoryState> | null => {
+    try {
+      const base64 = hash.substring(1);
+      // Decode Unicode characters from Base64
+      const jsonString = decodeURIComponent(atob(base64).split('').map((c) => {
+          return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+      }).join(''));
+      
+      const data = JSON.parse(jsonString);
+      
+      if (!data.g || !data.c || !Array.isArray(data.s)) return null;
+
+      return {
+        genre: data.g,
+        mainCharacter: data.c,
+        segments: data.s, // Segments loaded without imageUrl
+        isGenerating: false,
+        error: null
+      };
+    } catch (e) {
+      console.error("Failed to parse story from URL:", e);
+      return null;
+    }
+  };
+
+  // Helper to safely clear URL hash without triggering security errors in blob/iframe contexts
+  const clearUrlHash = () => {
+    try {
+      // replaceState is generally safer than pushState in sandboxes.
+      // Passing ' ' as the URL clears the hash visually in most browsers without redirecting.
+      window.history.replaceState(null, '', ' ');
+    } catch (e) {
+      // Fallback: just empty the hash, might leave a '#' in some browsers but is safe
+      window.location.hash = '';
+    }
+  };
+
+  // Check for shared story on mount
+  useEffect(() => {
+    if (window.location.hash.length > 1) {
+      const sharedState = deserializeState(window.location.hash);
+      if (sharedState) {
+        setState(prev => ({ ...prev, ...sharedState as StoryState }));
+      }
+    }
+  }, []);
+
+  // --- Handlers ---
+
   const handleStartStory = async (genre: StoryGenre, character: string) => {
+    // Clear any existing hash when starting new
+    clearUrlHash();
+    
     setInitLoading(true);
-    setState(prev => ({ ...prev, isGenerating: true, genre, mainCharacter: character }));
+    setState(prev => ({ ...prev, isGenerating: true, genre, mainCharacter: character, segments: [] }));
 
     try {
-      // 1. Generate Text
       const response = await generateStorySegment(genre, character, [], null);
-      
-      // 2. Generate Image
-      // We do this in parallel with rendering if we wanted, but simpler to wait for both 
-      // to avoid layout shifts in the first load, or show a skeleton. 
-      // Let's show text first then load image to be faster? 
-      // For this prototype, we'll wait for the image to ensure maximum "Wow" factor on reveal.
-      
       const imageUrl = await generateSceneImage(response.imageDescription);
 
       const newSegment: StorySegment = {
@@ -59,11 +123,39 @@ const App: React.FC = () => {
     }
   };
 
-  // Handle making a choice
+  const handleReset = () => {
+    // Clear state and URL hash to allow starting a new story
+    setInitLoading(false);
+    setState({
+      genre: null,
+      mainCharacter: '',
+      segments: [],
+      isGenerating: false,
+      error: null
+    });
+    clearUrlHash();
+  };
+
+  const handleUndo = () => {
+    if (state.isGenerating) return;
+    
+    // Clearing hash to avoid confusion with URL state
+    clearUrlHash();
+
+    setState(prev => {
+        const newSegments = prev.segments.slice(0, -1);
+        return {
+            ...prev,
+            segments: newSegments,
+            isGenerating: false,
+            error: null
+        };
+    });
+  };
+
   const handleChoice = async (choice: string) => {
     setState(prev => ({ ...prev, isGenerating: true }));
 
-    // Construct context from previous segments (last 2 for relevance + summary if we had one)
     const context = state.segments.map(s => s.text);
 
     try {
@@ -74,7 +166,6 @@ const App: React.FC = () => {
         choice
       );
 
-      // Create segment immediately with no image so text is readable
       const tempId = Date.now().toString();
       const newSegmentWithoutImage: StorySegment = {
         id: tempId,
@@ -83,13 +174,11 @@ const App: React.FC = () => {
         choices: response.choices
       };
 
-      // Optimistic update
       setState(prev => ({
         ...prev,
         segments: [...prev.segments, newSegmentWithoutImage]
       }));
 
-      // Fetch image in background then update
       const imageUrl = await generateSceneImage(response.imageDescription);
       
       setState(prev => ({
@@ -105,6 +194,37 @@ const App: React.FC = () => {
         ...prev,
         isGenerating: false,
         error: "The story thread snapped. Please try again."
+      }));
+    }
+  };
+
+  const handleShare = () => {
+    const hash = serializeState(state);
+    const url = `${window.location.origin}${window.location.pathname}#${hash}`;
+    navigator.clipboard.writeText(url);
+  };
+
+  const handleRegenerateImage = async (segmentId: string) => {
+    const segment = state.segments.find(s => s.id === segmentId);
+    if (!segment) return;
+
+    setState(prev => ({ ...prev, isGenerating: true }));
+
+    try {
+      const imageUrl = await generateSceneImage(segment.imagePrompt);
+      setState(prev => ({
+        ...prev,
+        isGenerating: false,
+        segments: prev.segments.map(s => 
+          s.id === segmentId ? { ...s, imageUrl } : s
+        )
+      }));
+    } catch (e) {
+      console.error("Failed to regenerate image", e);
+      setState(prev => ({ 
+        ...prev, 
+        isGenerating: false, 
+        error: "Failed to visualize this scene." 
       }));
     }
   };
@@ -127,12 +247,11 @@ const App: React.FC = () => {
            </div>
         )}
 
-        {/* Main Content Switcher */}
         <div className="relative z-10 w-full">
           {state.segments.length === 0 ? (
             initLoading ? (
                <div className="h-[80vh] flex items-center justify-center">
-                 <LoadingOverlay message={`Summoning a ${state.genre} world for ${state.mainCharacter}...`} />
+                 <LoadingOverlay message={`Summoning a ${state.genre || 'mysterious'} world for ${state.mainCharacter || 'a hero'}...`} />
                </div>
             ) : (
               <SetupScreen onStart={handleStartStory} />
@@ -141,7 +260,11 @@ const App: React.FC = () => {
             <StoryBoard 
               segments={state.segments} 
               onChoice={handleChoice}
+              onShare={handleShare}
+              onRegenerateImage={handleRegenerateImage}
               isGenerating={state.isGenerating}
+              onReset={handleReset}
+              onUndo={handleUndo}
             />
           )}
         </div>
