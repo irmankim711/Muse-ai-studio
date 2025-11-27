@@ -4,11 +4,13 @@ import { Sword, Rocket, Ghost, Search, Map, Cpu, ArrowRight } from 'lucide-react
 
 interface SetupScreenProps {
   onStart: (genre: StoryGenre, character: string) => void;
+  initialGenre?: StoryGenre | null;
+  initialCharacter?: string;
 }
 
-const SetupScreen: React.FC<SetupScreenProps> = ({ onStart }) => {
-  const [selectedGenre, setSelectedGenre] = useState<StoryGenre>(StoryGenre.FANTASY);
-  const [characterName, setCharacterName] = useState('');
+const SetupScreen: React.FC<SetupScreenProps> = ({ onStart, initialGenre, initialCharacter }) => {
+  const [selectedGenre, setSelectedGenre] = useState<StoryGenre>(initialGenre || StoryGenre.FANTASY);
+  const [characterName, setCharacterName] = useState(initialCharacter || '');
 
   const genres = [
     { type: StoryGenre.FANTASY, icon: <Sword className="w-6 h-6" />, desc: "Magic, dragons, and epic quests." },

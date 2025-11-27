@@ -143,20 +143,31 @@ const StoryBoard: React.FC<StoryBoardProps> = ({
       <div className="fixed bottom-0 left-0 w-full bg-gradient-to-t from-slate-900 via-slate-900/95 to-transparent pt-12 pb-8 z-40 px-4 pointer-events-none">
          <div className="max-w-4xl mx-auto pointer-events-auto">
             {!isGenerating ? (
-               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                 {currentSegment.choices.map((choice, idx) => (
-                   <button
-                     key={idx}
-                     onClick={() => onChoice(choice)}
-                     className="group relative overflow-hidden bg-indigo-600/10 hover:bg-indigo-600/20 border border-indigo-500/30 hover:border-indigo-500 text-left p-4 rounded-xl transition-all active:scale-95 shadow-lg backdrop-blur-sm"
-                   >
-                     <span className="absolute top-0 left-0 w-1 h-full bg-indigo-500 group-hover:w-1.5 transition-all"></span>
-                     <div className="flex items-center justify-between pl-3">
-                       <span className="text-sm md:text-base text-indigo-100 font-medium">{choice}</span>
-                       <ChevronRight className="w-4 h-4 text-indigo-400 opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 transition-all" />
-                     </div>
-                   </button>
-                 ))}
+               <div className="flex flex-col gap-3">
+                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                   {currentSegment.choices.map((choice, idx) => (
+                     <button
+                       key={idx}
+                       onClick={() => onChoice(choice)}
+                       className="group relative overflow-hidden bg-indigo-600/10 hover:bg-indigo-600/20 border border-indigo-500/30 hover:border-indigo-500 text-left p-4 rounded-xl transition-all active:scale-95 shadow-lg backdrop-blur-sm"
+                     >
+                       <span className="absolute top-0 left-0 w-1 h-full bg-indigo-500 group-hover:w-1.5 transition-all"></span>
+                       <div className="flex items-center justify-between pl-3">
+                         <span className="text-sm md:text-base text-indigo-100 font-medium">{choice}</span>
+                         <ChevronRight className="w-4 h-4 text-indigo-400 opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 transition-all" />
+                       </div>
+                     </button>
+                   ))}
+                 </div>
+                 {/* Secondary Undo Button for Better UX */}
+                 <div className="flex justify-center">
+                    <button 
+                       onClick={onUndo} 
+                       className="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-1.5 py-2 px-4 hover:bg-slate-800/50 rounded-full transition-colors"
+                    >
+                      <Undo2 className="w-3 h-3" /> Go back to previous step
+                    </button>
+                 </div>
                </div>
             ) : (
                <div className="flex justify-center items-center gap-3 py-4 bg-slate-900/50 backdrop-blur-sm rounded-xl border border-slate-800/50">

@@ -66,11 +66,11 @@ const App: React.FC = () => {
   // Helper to safely clear URL hash without triggering security errors in blob/iframe contexts
   const clearUrlHash = () => {
     try {
-      // replaceState is generally safer than pushState in sandboxes.
-      // Passing ' ' as the URL clears the hash visually in most browsers without redirecting.
-      window.history.replaceState(null, '', ' ');
+      // replaceState is safer than pushState in sandboxes.
+      // Use pathname + search to cleanly remove hash without side effects
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
     } catch (e) {
-      // Fallback: just empty the hash, might leave a '#' in some browsers but is safe
+      // Fallback: simple hash clear
       window.location.hash = '';
     }
   };
@@ -139,7 +139,7 @@ const App: React.FC = () => {
   const handleUndo = () => {
     if (state.isGenerating) return;
     
-    // Clearing hash to avoid confusion with URL state
+    // Clearing hash to avoid confusion with URL state when modifying story
     clearUrlHash();
 
     setState(prev => {
@@ -254,7 +254,11 @@ const App: React.FC = () => {
                  <LoadingOverlay message={`Summoning a ${state.genre || 'mysterious'} world for ${state.mainCharacter || 'a hero'}...`} />
                </div>
             ) : (
-              <SetupScreen onStart={handleStartStory} />
+              <SetupScreen 
+                onStart={handleStartStory} 
+                initialGenre={state.genre}
+                initialCharacter={state.mainCharacter}
+              />
             )
           ) : (
             <StoryBoard 
