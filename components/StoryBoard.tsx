@@ -23,10 +23,29 @@ const StoryBoard: React.FC<StoryBoardProps> = ({
 }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
+  const [exitingSegmentId, setExitingSegmentId] = useState<string | null>(null);
   
+  // Scroll to bottom when segments change
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [segments]);
+    // Only scroll if we aren't currently animating an exit (prevents jumpiness)
+    if (!exitingSegmentId) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [segments.length, isGenerating, exitingSegmentId]);
+
+  // Handle undo with fade-out animation
+  const handleUndo = () => {
+    if (segments.length === 0 || isGenerating) return;
+    
+    const lastId = segments[segments.length - 1].id;
+    setExitingSegmentId(lastId);
+
+    // Wait for animation to complete before removing from state
+    setTimeout(() => {
+      onUndo();
+      setExitingSegmentId(null);
+    }, 500);
+  };
 
   const currentSegment = segments[segments.length - 1];
 
@@ -52,8 +71,8 @@ const StoryBoard: React.FC<StoryBoardProps> = ({
       <div className="flex flex-wrap justify-between items-center mb-4 gap-3">
          <div className="flex items-center gap-2">
              <button 
-                onClick={onUndo}
-                disabled={isGenerating}
+                onClick={handleUndo}
+                disabled={isGenerating || segments.length === 0}
                 className="text-xs flex items-center gap-2 text-slate-300 hover:text-white transition-colors px-3 py-1.5 bg-slate-800/80 hover:bg-slate-700 border border-slate-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
              >
                <Undo2 className="w-4 h-4" /> Back
@@ -86,61 +105,75 @@ const StoryBoard: React.FC<StoryBoardProps> = ({
       </div>
 
       <div className="flex-grow space-y-12 pb-32">
-        {segments.map((segment, index) => (
-          <div key={segment.id} className={`fade-in flex flex-col lg:flex-row gap-8 items-start ${index !== segments.length - 1 ? 'opacity-90' : ''}`}>
-            <div className="flex-1 order-2 lg:order-1 bg-slate-900/40 p-6 md:p-8 rounded-2xl border border-slate-800/60 shadow-lg">
-              <span className="text-indigo-500 text-xs font-bold tracking-widest uppercase mb-3 block">
-                Chapter {index + 1}
-              </span>
-              <div className="prose prose-invert prose-lg text-slate-200 font-serif leading-relaxed whitespace-pre-wrap">
-                {segment.text}
-              </div>
-            </div>
+        {segments.map((segment, index) => {
+            const isExiting = segment.id === exitingSegmentId;
+            const isLast = index === segments.length - 1;
 
-            <div className="w-full lg:w-1/2 order-1 lg:order-2">
-               <div className="relative rounded-2xl overflow-hidden shadow-2xl shadow-black/40 aspect-video bg-slate-800 group border border-slate-700/50">
-                  {segment.imageUrl ? (
-                    <img 
-                      src={segment.imageUrl} 
-                      alt="Scene illustration" 
-                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center text-slate-500 gap-3 p-6 text-center bg-slate-800/80">
-                      {isGenerating && index === segments.length - 1 ? (
-                        <>
-                           <RefreshCw className="w-8 h-8 animate-spin text-indigo-500/50" />
-                           <span className="text-sm animate-pulse">Dreaming up visuals...</span>
-                        </>
+            return (
+              <div 
+                key={segment.id} 
+                className={`
+                   flex flex-col lg:flex-row gap-8 items-start 
+                   transition-all duration-500 ease-in-out transform origin-center
+                   ${isExiting ? 'opacity-0 translate-y-8 scale-95' : 'opacity-100 translate-y-0 scale-100'}
+                   ${!isExiting ? 'fade-in' : ''} 
+                   ${!isLast && !isExiting ? 'opacity-70 grayscale-[30%]' : ''}
+                `}
+              >
+                <div className="flex-1 order-2 lg:order-1 bg-slate-900/40 p-6 md:p-8 rounded-2xl border border-slate-800/60 shadow-lg backdrop-blur-sm transition-colors duration-500">
+                  <span className="text-indigo-500 text-xs font-bold tracking-widest uppercase mb-3 block">
+                    Chapter {index + 1}
+                  </span>
+                  <div className="prose prose-invert prose-lg text-slate-200 font-serif leading-relaxed whitespace-pre-wrap">
+                    {segment.text}
+                  </div>
+                </div>
+
+                <div className="w-full lg:w-1/2 order-1 lg:order-2">
+                  <div className="relative rounded-2xl overflow-hidden shadow-2xl shadow-black/40 aspect-video bg-slate-800 group border border-slate-700/50 transition-all duration-500">
+                      {segment.imageUrl ? (
+                        <img 
+                          src={segment.imageUrl} 
+                          alt="Scene illustration" 
+                          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                        />
                       ) : (
-                        <>
-                           <ImagePlus className="w-8 h-8 text-slate-600 mb-1" />
-                           <p className="text-sm text-slate-400 mb-2">Visuals not loaded</p>
-                           <button 
-                             onClick={() => onRegenerateImage(segment.id)}
-                             disabled={isGenerating}
-                             className="text-xs bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 border border-indigo-500/30 px-4 py-2 rounded-full transition-all disabled:opacity-50"
-                           >
-                             Generate Scene Art
-                           </button>
-                        </>
+                        <div className="w-full h-full flex flex-col items-center justify-center text-slate-500 gap-3 p-6 text-center bg-slate-800/80">
+                          {isGenerating && isLast ? (
+                            <>
+                              <RefreshCw className="w-8 h-8 animate-spin text-indigo-500/50" />
+                              <span className="text-sm animate-pulse">Dreaming up visuals...</span>
+                            </>
+                          ) : (
+                            <>
+                              <ImagePlus className="w-8 h-8 text-slate-600 mb-1" />
+                              <p className="text-sm text-slate-400 mb-2">Visuals not loaded</p>
+                              <button 
+                                onClick={() => onRegenerateImage(segment.id)}
+                                disabled={isGenerating}
+                                className="text-xs bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 border border-indigo-500/30 px-4 py-2 rounded-full transition-all disabled:opacity-50"
+                              >
+                                Generate Scene Art
+                              </button>
+                            </>
+                          )}
+                        </div>
                       )}
-                    </div>
-                  )}
-                  
-                  {segment.imageUrl && (
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">
-                      <p className="text-xs text-white/70 line-clamp-2 italic">{segment.imagePrompt}</p>
-                    </div>
-                  )}
-               </div>
-            </div>
-          </div>
-        ))}
+                      
+                      {segment.imageUrl && (
+                        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">
+                          <p className="text-xs text-white/70 line-clamp-2 italic">{segment.imagePrompt}</p>
+                        </div>
+                      )}
+                  </div>
+                </div>
+              </div>
+            );
+        })}
         <div ref={bottomRef} />
       </div>
 
-      <div className="fixed bottom-0 left-0 w-full bg-gradient-to-t from-slate-900 via-slate-900/95 to-transparent pt-12 pb-8 z-40 px-4 pointer-events-none">
+      <div className={`fixed bottom-0 left-0 w-full bg-gradient-to-t from-slate-900 via-slate-900/95 to-transparent pt-12 pb-8 z-40 px-4 pointer-events-none transition-opacity duration-500 ${exitingSegmentId ? 'opacity-0' : 'opacity-100'}`}>
          <div className="max-w-4xl mx-auto pointer-events-auto">
             {!isGenerating ? (
                <div className="flex flex-col gap-3">
@@ -149,7 +182,8 @@ const StoryBoard: React.FC<StoryBoardProps> = ({
                      <button
                        key={idx}
                        onClick={() => onChoice(choice)}
-                       className="group relative overflow-hidden bg-indigo-600/10 hover:bg-indigo-600/20 border border-indigo-500/30 hover:border-indigo-500 text-left p-4 rounded-xl transition-all active:scale-95 shadow-lg backdrop-blur-sm"
+                       className="group relative overflow-hidden bg-indigo-600/10 hover:bg-indigo-600/20 border border-indigo-500/30 hover:border-indigo-500 text-left p-4 rounded-xl transition-all active:scale-95 shadow-lg backdrop-blur-sm fade-in"
+                       style={{ animationDelay: `${idx * 150}ms`, animationFillMode: 'both' }}
                      >
                        <span className="absolute top-0 left-0 w-1 h-full bg-indigo-500 group-hover:w-1.5 transition-all"></span>
                        <div className="flex items-center justify-between pl-3">
@@ -162,7 +196,7 @@ const StoryBoard: React.FC<StoryBoardProps> = ({
                  {/* Secondary Undo Button for Better UX */}
                  <div className="flex justify-center">
                     <button 
-                       onClick={onUndo} 
+                       onClick={handleUndo} 
                        className="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-1.5 py-2 px-4 hover:bg-slate-800/50 rounded-full transition-colors"
                     >
                       <Undo2 className="w-3 h-3" /> Go back to previous step
@@ -170,9 +204,9 @@ const StoryBoard: React.FC<StoryBoardProps> = ({
                  </div>
                </div>
             ) : (
-               <div className="flex justify-center items-center gap-3 py-4 bg-slate-900/50 backdrop-blur-sm rounded-xl border border-slate-800/50">
+               <div className="flex justify-center items-center gap-3 py-4 bg-slate-900/50 backdrop-blur-sm rounded-xl border border-slate-800/50 animate-pulse">
                   <RefreshCw className="w-5 h-5 animate-spin text-indigo-400" />
-                  <span className="text-slate-300 font-display animate-pulse">Conjurating the next chapter...</span>
+                  <span className="text-slate-300 font-display">Conjurating the next chapter...</span>
                </div>
             )}
          </div>
